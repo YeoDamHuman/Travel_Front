@@ -9,8 +9,8 @@ android {
         applicationId "com.yeodam.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1               // 다음 업로드부터 매번 +1 필수
-        versionName "1.0"
+        versionCode 2               // 다음 업로드부터 매번 +1 필수
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'

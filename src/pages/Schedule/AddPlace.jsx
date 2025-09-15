@@ -3,13 +3,15 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import DefaultLayout from '../../layouts/DefaultLayout';
 import BackHeader from '../../components/header/BackHeader';
 import PrimaryButton from '../../components/common/PrimaryButton';
+import SearchBar from '../../components/common/SearchBar';
 import { message } from 'antd';
 import useScheduleStore from '../../store/scheduleStore';
 
 import { getSchedule } from '../../api';
-import { getFavorites } from '../../api/favorite/getFavorites';
+import { getFavoritesByRegion } from '../../api/favorite/getFavoritesByRegion';
 import { getPlacesByRegion } from '../../api/place/getPlacesByRegion';
 import { createScheduleItem } from '../../api';
+import useUserStore from '../../store/userStore';
 import PlaceList from '../../components/board/PlaceList';
 
 const dedupBy = (arr, seen, item) => {
@@ -21,6 +23,7 @@ const dedupBy = (arr, seen, item) => {
 
 const AddPlace = () => {
   const navigate = useNavigate();
+  const accessToken = useUserStore((s) => s.accessToken);
   const location = useLocation();
   const [sp] = useSearchParams();
 
@@ -48,7 +51,14 @@ const AddPlace = () => {
 
   const [baseOrder, setBaseOrder] = useState(1);
 
-  // ✅ 이 상태만 믿고 동작: 지역코드(없으면 스케줄에서 채움)
+  // 검색 관련 상태
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  // 탭 관련 상태
+  const [activeTab, setActiveTab] = useState('favorites');
+
+  //  이 상태만 믿고 동작: 지역코드(없으면 스케줄에서 채움)
   const [regionCodes, setRegionCodes] = useState({
     ldongRegnCd: initRegn,
     ldongSignguCd: initSigngu,
@@ -56,6 +66,33 @@ const AddPlace = () => {
 
   const detail = useScheduleStore((s) => s.detail);
   const setDetail = useScheduleStore((s) => s.setDetail);
+
+  const [showTop, setShowTop] = useState(false);
+
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const y =
+            window.scrollY ||
+            document.documentElement.scrollTop ||
+            document.body.scrollTop ||
+            0;
+          setShowTop(y > 200); // 200px 넘으면 표시
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // 초기 상태 계산
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // 서버 0-베이스 여부 감지
   const isZeroBased = useMemo(() => {
@@ -129,12 +166,20 @@ const AddPlace = () => {
     (async () => {
       try {
         setFavLoading(true);
-        const res = await getFavorites({ page: 0, size: 100 });
+        if (!regionCodes.ldongRegnCd || !regionCodes.ldongSignguCd) {
+          setFavorites([]);
+          return;
+        }
+        const res = await getFavoritesByRegion(
+          regionCodes.ldongRegnCd,
+          regionCodes.ldongSignguCd,
+          accessToken
+        );
         const list = Array.isArray(res?.favorites) ? res.favorites : [];
+
         setFavorites(
           list.map((x) => {
             const cid = String(x.contentId ?? x.id);
-            // 숫자 문자열만 들어온 경우 제목 대체
             const rawTitle = x.placeTitle || x.title || '';
             const destination =
               /^\d+$/.test(String(rawTitle)) && cid === String(rawTitle)
@@ -145,10 +190,11 @@ const AddPlace = () => {
               contentId: cid,
               destination,
               category: x.tema || x.theme || '기타',
+              tema: x.tema || x.theme || '기타',
               location: x.address || '',
               opentime: x.openTime || '-',
               closetime: x.closeTime || '-',
-              tel: x.tel || '정보 없음',
+              tel: x.tel || '',
               imageUrl: x.placeImage || x.imageUrl || x.firstImage || '',
               __isFavorite: true,
             };
@@ -160,22 +206,29 @@ const AddPlace = () => {
         setFavLoading(false);
       }
     })();
-  }, []);
+  }, [regionCodes.ldongRegnCd, regionCodes.ldongSignguCd]);
 
   // ===== 2) 지역 장소 로드 (PlaceList 포맷) =====
-  const loadPlaces = async (pageToLoad) => {
+  const loadPlaces = async (pageToLoad, searchKeyword = '') => {
     const { ldongRegnCd, ldongSignguCd } = regionCodes;
     if (!ldongRegnCd || !ldongSignguCd) return;
     if (placeLoading) return;
 
     try {
       setPlaceLoading(true);
-      const res = await getPlacesByRegion({
+      const params = {
         ldongRegnCd: String(ldongRegnCd),
         ldongSignguCd: String(ldongSignguCd),
         page: pageToLoad,
         size: 20,
-      });
+      };
+
+      // 검색어가 있으면 파라미터에 추가
+      if (searchKeyword.trim()) {
+        params.keyword = searchKeyword.trim();
+      }
+
+      const res = await getPlacesByRegion(params);
 
       const content = res?.data?.content ?? res?.content ?? [];
       const next = [];
@@ -206,7 +259,13 @@ const AddPlace = () => {
         };
         dedupBy(next, seenRef.current, mapped);
       }
-      setPlaces((prev) => [...prev, ...next]);
+
+      if (pageToLoad === 0) {
+        setPlaces(next);
+      } else {
+        setPlaces((prev) => [...prev, ...next]);
+      }
+
       setHasMore(content.length === 20);
       setPage(pageToLoad);
     } catch (e) {
@@ -216,17 +275,62 @@ const AddPlace = () => {
     }
   };
 
-  // 지역코드가 준비되면 첫 페이지 로드
+  // 지역코드가 준비되면 첫 페이지 로드 (둘러보기 탭일 때만)
   useEffect(() => {
-    setPlaces([]);
-    setPage(0);
-    setHasMore(true);
-    seenRef.current.clear();
-    if (regionCodes.ldongRegnCd && regionCodes.ldongSignguCd) {
-      loadPlaces(0);
+    if (activeTab === 'browse') {
+      setPlaces([]);
+      setPage(0);
+      setHasMore(true);
+      seenRef.current.clear();
+      if (regionCodes.ldongRegnCd && regionCodes.ldongSignguCd) {
+        loadPlaces(0, searchTerm);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regionCodes.ldongRegnCd, regionCodes.ldongSignguCd]);
+  }, [regionCodes.ldongRegnCd, regionCodes.ldongSignguCd, activeTab]);
+
+  // 검색 처리 함수
+  const handleSearch = () => {
+    if (
+      activeTab === 'browse' &&
+      regionCodes.ldongRegnCd &&
+      regionCodes.ldongSignguCd
+    ) {
+      setPlaces([]);
+      setPage(0);
+      setHasMore(true);
+      seenRef.current.clear();
+      setIsSearching(true);
+
+      loadPlaces(0, searchTerm).finally(() => {
+        setIsSearching(false);
+      });
+    }
+  };
+
+  // 검색어 변경 시 디바운싱 적용 (둘러보기 탭일 때만)
+  useEffect(() => {
+    if (activeTab === 'browse') {
+      const timeoutId = setTimeout(() => {
+        if (regionCodes.ldongRegnCd && regionCodes.ldongSignguCd) {
+          handleSearch();
+        }
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchTerm, activeTab]);
+
+  // 검색어 초기화
+  const clearSearch = () => {
+    setSearchTerm('');
+  };
+
+  // 탭 변경 핸들러
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSearchTerm(''); // 탭 변경 시 검색어 초기화
+  };
 
   // ===== 3) 선택/해제 =====
   const toggleSelect = (cid) => {
@@ -273,6 +377,12 @@ const AddPlace = () => {
     }
   };
 
+  // PlaceList 클릭 핸들러 (상세 페이지로 이동)
+  const handlePlaceClick = (contentId, e) => {
+    e.stopPropagation(); // 체크박스 클릭과 구분
+    navigate(`/place/detail/${contentId}`);
+  };
+
   // ===== 5) Selectable Row (PlaceList 래퍼) =====
   const SelectableRow = ({ item }) => {
     const cid = String(item.contentId);
@@ -280,29 +390,36 @@ const AddPlace = () => {
 
     return (
       <div
-        onClick={() => toggleSelect(cid)}
         className={`relative rounded-xl ${
           checked ? 'ring-2 ring-blue-400' : ''
         }`}
       >
-        {/* PlaceList 자체는 클릭 이벤트를 먹지 않게 만들어 선택만 하도록 */}
-        <div className="pointer-events-none">
+        {/* PlaceList 클릭 시 상세 페이지로 이동 */}
+        <div
+          className="cursor-pointer"
+          onClick={(e) => handlePlaceClick(cid, e)}
+        >
           <PlaceList
             contentId={cid}
             destination={item.destination}
             category={item.category}
+            tema={item.tema}
             location={item.location}
             opentime={item.opentime}
             closetime={item.closetime}
             tel={item.tel}
             imageUrl={item.imageUrl}
+            showTema
           />
         </div>
 
         {/* 체크박스 (우상단) */}
         <label
-          className="absolute top-3 right-3 cursor-pointer"
-          onClick={(e) => e.stopPropagation()}
+          className="absolute top-3 right-3 cursor-pointer z-10"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSelect(cid);
+          }}
         >
           <input
             type="checkbox"
@@ -316,6 +433,25 @@ const AddPlace = () => {
     );
   };
 
+  // 즐겨찾기 필터링 (검색어가 있을 때)
+  const filteredFavorites = useMemo(() => {
+    if (!searchTerm.trim()) return favorites;
+    const term = searchTerm.toLowerCase();
+    return favorites.filter(
+      (item) =>
+        item.destination && item.destination.toLowerCase().includes(term)
+    );
+  }, [favorites, searchTerm]);
+
+  const filteredPlaces = useMemo(() => {
+    if (!searchTerm.trim()) return places;
+    const term = searchTerm.toLowerCase();
+    return places.filter(
+      (item) =>
+        item.destination && item.destination.toLowerCase().includes(term)
+    );
+  }, [places, searchTerm]);
+
   // 힌트 문구도 regionCodes 기준
   const regionHint = useMemo(() => {
     if (!regionCodes.ldongRegnCd || !regionCodes.ldongSignguCd)
@@ -327,51 +463,130 @@ const AddPlace = () => {
     <DefaultLayout>
       <BackHeader title="장소 추가" />
       <div className="px-4 sm:px-6 md:px-8 pb-20">
-        {/* 즐겨찾기 섹션 */}
-        <h3 className="text-base font-semibold mb-2">즐겨찾기</h3>
-        {favLoading ? (
-          <div className="text-sm text-gray-400 py-6">불러오는 중…</div>
-        ) : favorites.length ? (
-          <div className="space-y-2 mb-6">
-            {favorites.map((f) => (
-              <SelectableRow key={f.contentId} item={f} />
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-gray-400 mb-6">즐겨찾기가 없어요.</div>
-        )}
+        {/* 탭 메뉴 */}
+        <div className="flex mb-4 bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => handleTabChange('favorites')}
+            className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+              activeTab === 'favorites'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            즐겨찾기
+          </button>
+          <button
+            onClick={() => handleTabChange('browse')}
+            className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+              activeTab === 'browse'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            둘러보기
+          </button>
+        </div>
 
-        {/* 지역 장소 섹션 */}
-        <div className="flex items-baseline justify-between mb-2">
-          <h3 className="text-base font-semibold">이 지역의 장소</h3>
-          {regionHint && (
-            <span className="text-xs text-red-400">{regionHint}</span>
+        {/* 검색바 */}
+        <div className="mb-6">
+          <SearchBar
+            placeholder={
+              activeTab === 'favorites'
+                ? '즐겨찾기에서 검색하세요'
+                : '장소를 검색하세요'
+            }
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          {searchTerm && (
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                '{searchTerm}' 검색 결과
+              </span>
+              <button
+                onClick={clearSearch}
+                className="text-sm text-blue-500 hover:text-blue-700"
+              >
+                검색 초기화
+              </button>
+            </div>
           )}
         </div>
 
-        {regionCodes.ldongRegnCd && regionCodes.ldongSignguCd ? (
+        {/* 탭별 콘텐츠 */}
+        {activeTab === 'favorites' ? (
+          /* 즐겨찾기 탭 */
           <>
-            <div className="space-y-2">
-              {places.map((p) => (
-                <SelectableRow key={p.contentId} item={p} />
-              ))}
-            </div>
-
-            <div className="text-center mt-3">
-              {hasMore ? (
-                <button
-                  disabled={placeLoading}
-                  onClick={() => loadPlaces(page + 1)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white shadow border hover:bg-gray-50 disabled:opacity-60"
-                >
-                  {placeLoading ? '불러오는 중…' : '더 보기'}
-                </button>
-              ) : (
-                <span className="text-xs text-gray-400">마지막입니다.</span>
-              )}
-            </div>
+            {favLoading ? (
+              <div className="text-sm text-gray-400 py-6 text-center">
+                불러오는 중…
+              </div>
+            ) : filteredFavorites.length ? (
+              <div className="space-y-2">
+                {filteredFavorites.map((f) => (
+                  <SelectableRow key={f.contentId} item={f} />
+                ))}
+              </div>
+            ) : searchTerm ? (
+              <div className="text-sm text-gray-400 py-6 text-center">
+                검색된 즐겨찾기가 없어요.
+              </div>
+            ) : (
+              <div className="text-sm text-gray-400 py-6 text-center">
+                즐겨찾기가 없어요.
+              </div>
+            )}
           </>
-        ) : null}
+        ) : (
+          /* 둘러보기 탭 */
+          <>
+            {regionHint && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <span className="text-sm text-red-600">{regionHint}</span>
+              </div>
+            )}
+
+            {regionCodes.ldongRegnCd && regionCodes.ldongSignguCd ? (
+              <>
+                {isSearching && page === 0 ? (
+                  <div className="text-sm text-gray-400 py-6 text-center">
+                    검색 중…
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      {filteredPlaces.map((p) => (
+                        <SelectableRow key={p.contentId} item={p} />
+                      ))}
+                    </div>
+
+                    {places.length === 0 && !isSearching ? (
+                      <div className="text-sm text-gray-400 py-6 text-center">
+                        {searchTerm ? '검색 결과가 없어요.' : '장소가 없어요.'}
+                      </div>
+                    ) : (
+                      <div className="text-center mt-4">
+                        {hasMore ? (
+                          <button
+                            disabled={placeLoading}
+                            onClick={() => loadPlaces(page + 1, searchTerm)}
+                            className="px-4 py-2 text-sm rounded-lg bg-white shadow border hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            {placeLoading ? '불러오는 중…' : '더 보기'}
+                          </button>
+                        ) : places.length > 0 ? (
+                          <span className="text-xs text-gray-400">
+                            마지막입니다.
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            ) : null}
+          </>
+        )}
 
         {/* 하단 고정 추가 버튼 */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t px-4 py-3">
@@ -384,6 +599,23 @@ const AddPlace = () => {
           </PrimaryButton>
         </div>
       </div>
+      {showTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          aria-label="맨 위로 가기"
+          className="
+      fixed bottom-20 right-5 z-50
+      h-11 w-11 rounded-full
+      bg-white/95 border border-gray-200 shadow-lg backdrop-blur
+      flex items-center justify-center
+      text-gray-700 text-lg
+      active:translate-y-[1px] active:shadow-md
+    "
+        >
+          ↑
+        </button>
+      )}
     </DefaultLayout>
   );
 };

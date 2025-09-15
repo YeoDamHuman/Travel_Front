@@ -17,9 +17,23 @@
             android:launchMode="singleTask"
             android:exported="true">
 
+            <!-- 기존: 런처 intent-filter -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- ✅ Kakao Redirect Deep Link -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- Kakao 콘솔에 등록한 Redirect URI와 동일해야 함 -->
+                <data
+                    android:scheme="yeodam"
+                    android:host="kakao"
+                    android:path="/callback" />
             </intent-filter>
 
         </activity>
@@ -31,11 +45,10 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"></meta-data>
+                android:resource="@xml/file_paths" />
         </provider>
     </application>
 
     <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

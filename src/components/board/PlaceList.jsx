@@ -6,20 +6,20 @@ const DEFAULT_PLACE_IMG = '/images/default_place.jpg';
 const PlaceList = ({
   contentId,
   destination,
+  tema,
   location,
   tel,
   imageUrl,
+  showTema = false,
 }) => {
   const navigate = useNavigate();
 
   const safeContentId = contentId ?? '';
   const safeTitle = (destination && String(destination).trim()) || '이름 미상';
-  const safeLocation = (location && String(location).trim()) || '지역 정보 없음';
-  const safeTel = (tel && String(tel).trim()) || '-';
   const safeImg = (imageUrl && String(imageUrl).trim()) || null;
-  
+
   const handleClick = useCallback(() => {
-    if (!safeContentId) return; 
+    if (!safeContentId) return;
     navigate(`/place/detail/${safeContentId}`);
   }, [navigate, safeContentId]);
 
@@ -59,26 +59,34 @@ const PlaceList = ({
 
       {/* 정보 영역 */}
       <div className="flex flex-col justify-between flex-1 min-w-0 mt-[0.2rem] mb-[0.4rem]">
-        <p className=" font-semibold truncate">{safeTitle}</p>
-          <div>
+        <p className="font-semibold truncate">{safeTitle}</p>
+        <div>
+          {tel && (
             <p className="text-xs text-gray-500">
               이용문의 :{' '}
-              {safeTel !== '-' ? (
-                <a
-                  href={`tel:${safeTel.replaceAll(/[^0-9+]/g, '')}`}
-                  className="underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {safeTel}
-                </a>
-              ) : (
-                '-'
-              )}
-          </p>
-          <div className="text-xs text-gray-500 truncate">
-            주소 : {safeLocation} 
-          </div>
+              <a
+                href={`tel:${tel.replaceAll(/[^0-9+]/g, '')}`}
+                className="underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {tel}
+              </a>
+            </p>
+          )}
 
+          {location && (
+            <div className="text-xs text-gray-500 truncate">
+              주소 : {location}
+            </div>
+          )}
+
+          {showTema && tema && (
+            <div className="mt-1">
+              <span className="inline-block px-2 py-0.5 text-[10px] bg-blue-50 text-blue-600 rounded-full">
+                #{tema}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

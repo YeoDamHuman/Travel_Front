@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import AppBackHandler from '../components/AppBackHandler';
+
 import HomePage from '../pages/HomePage';
 import SearchPage from '../pages/SearchPage';
 import Splash from '../pages/Splash';
@@ -38,6 +40,7 @@ import InviteAcceptPage from '../pages/InviteAcceptPage';
 
 const AppRoutes = () => (
   <Router>
+    <AppBackHandler />
     <AuthChecker />
     <Routes>
       <Route path="/splash" element={<Splash />} />
