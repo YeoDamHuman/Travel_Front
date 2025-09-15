@@ -56,7 +56,7 @@ const AddPlace = () => {
   const [isSearching, setIsSearching] = useState(false);
 
   // 탭 관련 상태
-  const [activeTab, setActiveTab] = useState('favorites'); 
+  const [activeTab, setActiveTab] = useState('favorites');
 
   //  이 상태만 믿고 동작: 지역코드(없으면 스케줄에서 채움)
   const [regionCodes, setRegionCodes] = useState({
@@ -66,6 +66,33 @@ const AddPlace = () => {
 
   const detail = useScheduleStore((s) => s.detail);
   const setDetail = useScheduleStore((s) => s.setDetail);
+
+  const [showTop, setShowTop] = useState(false);
+
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const y =
+            window.scrollY ||
+            document.documentElement.scrollTop ||
+            document.body.scrollTop ||
+            0;
+          setShowTop(y > 200); // 200px 넘으면 표시
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // 초기 상태 계산
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // 서버 0-베이스 여부 감지
   const isZeroBased = useMemo(() => {
@@ -143,10 +170,14 @@ const AddPlace = () => {
           setFavorites([]);
           return;
         }
-      const res = await getFavoritesByRegion(regionCodes.ldongRegnCd, regionCodes.ldongSignguCd, accessToken );
-      const list = Array.isArray(res?.favorites) ? res.favorites : [];
-        
-      setFavorites(
+        const res = await getFavoritesByRegion(
+          regionCodes.ldongRegnCd,
+          regionCodes.ldongSignguCd,
+          accessToken
+        );
+        const list = Array.isArray(res?.favorites) ? res.favorites : [];
+
+        setFavorites(
           list.map((x) => {
             const cid = String(x.contentId ?? x.id);
             const rawTitle = x.placeTitle || x.title || '';
@@ -228,13 +259,13 @@ const AddPlace = () => {
         };
         dedupBy(next, seenRef.current, mapped);
       }
-      
+
       if (pageToLoad === 0) {
         setPlaces(next);
       } else {
         setPlaces((prev) => [...prev, ...next]);
       }
-      
+
       setHasMore(content.length === 20);
       setPage(pageToLoad);
     } catch (e) {
@@ -260,13 +291,17 @@ const AddPlace = () => {
 
   // 검색 처리 함수
   const handleSearch = () => {
-    if (activeTab === 'browse' && regionCodes.ldongRegnCd && regionCodes.ldongSignguCd) {
+    if (
+      activeTab === 'browse' &&
+      regionCodes.ldongRegnCd &&
+      regionCodes.ldongSignguCd
+    ) {
       setPlaces([]);
       setPage(0);
       setHasMore(true);
       seenRef.current.clear();
       setIsSearching(true);
-      
+
       loadPlaces(0, searchTerm).finally(() => {
         setIsSearching(false);
       });
@@ -360,7 +395,7 @@ const AddPlace = () => {
         }`}
       >
         {/* PlaceList 클릭 시 상세 페이지로 이동 */}
-        <div 
+        <div
           className="cursor-pointer"
           onClick={(e) => handlePlaceClick(cid, e)}
         >
@@ -368,7 +403,7 @@ const AddPlace = () => {
             contentId={cid}
             destination={item.destination}
             category={item.category}
-            tema={item.tema}  
+            tema={item.tema}
             location={item.location}
             opentime={item.opentime}
             closetime={item.closetime}
@@ -408,15 +443,14 @@ const AddPlace = () => {
     );
   }, [favorites, searchTerm]);
 
-
-const filteredPlaces = useMemo(() => {
-  if (!searchTerm.trim()) return places;
-  const term = searchTerm.toLowerCase();
-  return places.filter(
-    (item) =>
-      item.destination && item.destination.toLowerCase().includes(term)
-  );
-}, [places, searchTerm]);
+  const filteredPlaces = useMemo(() => {
+    if (!searchTerm.trim()) return places;
+    const term = searchTerm.toLowerCase();
+    return places.filter(
+      (item) =>
+        item.destination && item.destination.toLowerCase().includes(term)
+    );
+  }, [places, searchTerm]);
 
   // 힌트 문구도 regionCodes 기준
   const regionHint = useMemo(() => {
@@ -457,8 +491,8 @@ const filteredPlaces = useMemo(() => {
         <div className="mb-6">
           <SearchBar
             placeholder={
-              activeTab === 'favorites' 
-                ? '즐겨찾기에서 검색하세요' 
+              activeTab === 'favorites'
+                ? '즐겨찾기에서 검색하세요'
                 : '장소를 검색하세요'
             }
             value={searchTerm}
@@ -484,7 +518,9 @@ const filteredPlaces = useMemo(() => {
           /* 즐겨찾기 탭 */
           <>
             {favLoading ? (
-              <div className="text-sm text-gray-400 py-6 text-center">불러오는 중…</div>
+              <div className="text-sm text-gray-400 py-6 text-center">
+                불러오는 중…
+              </div>
             ) : filteredFavorites.length ? (
               <div className="space-y-2">
                 {filteredFavorites.map((f) => (
@@ -513,7 +549,9 @@ const filteredPlaces = useMemo(() => {
             {regionCodes.ldongRegnCd && regionCodes.ldongSignguCd ? (
               <>
                 {isSearching && page === 0 ? (
-                  <div className="text-sm text-gray-400 py-6 text-center">검색 중…</div>
+                  <div className="text-sm text-gray-400 py-6 text-center">
+                    검색 중…
+                  </div>
                 ) : (
                   <>
                     <div className="space-y-2">
@@ -537,7 +575,9 @@ const filteredPlaces = useMemo(() => {
                             {placeLoading ? '불러오는 중…' : '더 보기'}
                           </button>
                         ) : places.length > 0 ? (
-                          <span className="text-xs text-gray-400">마지막입니다.</span>
+                          <span className="text-xs text-gray-400">
+                            마지막입니다.
+                          </span>
                         ) : null}
                       </div>
                     )}
@@ -559,6 +599,23 @@ const filteredPlaces = useMemo(() => {
           </PrimaryButton>
         </div>
       </div>
+      {showTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          aria-label="맨 위로 가기"
+          className="
+      fixed bottom-20 right-5 z-50
+      h-11 w-11 rounded-full
+      bg-white/95 border border-gray-200 shadow-lg backdrop-blur
+      flex items-center justify-center
+      text-gray-700 text-lg
+      active:translate-y-[1px] active:shadow-md
+    "
+        >
+          ↑
+        </button>
+      )}
     </DefaultLayout>
   );
 };

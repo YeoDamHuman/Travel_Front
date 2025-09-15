@@ -54,6 +54,49 @@ const RegionDetailPage = () => {
   const [hasMore, setHasMore] = useState(true);
   const idSetRef = useRef(new Set());
 
+  const [showTop, setShowTop] = useState(false);
+
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const y =
+            window.scrollY ||
+            document.documentElement.scrollTop ||
+            document.body.scrollTop ||
+            0;
+          setShowTop(y > 200); // 200px 넘으면 표시
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // 초기 상태 계산
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // 🔻 무한스크롤 감시점 & 중복요청 방지용 최신 상태 ref
+  const loadMoreRef = useRef(null);
+  const loadingRef = useRef(loading);
+  const hasMoreRef = useRef(hasMore);
+  const pageRef = useRef(page);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
   const normalizeHttps = (u) =>
     typeof u === 'string' ? u.trim().replace(/^http:\/\//i, 'https://') : '';
 
@@ -115,7 +158,7 @@ const RegionDetailPage = () => {
       } else {
         setWeather(null);
       }
-    } catch (error) {
+    } catch {
       setWeather(null);
     } finally {
       setWeatherLoading(false);
@@ -140,7 +183,7 @@ const RegionDetailPage = () => {
   const fetchPage = useCallback(
     async (pageToLoad) => {
       if (!ldongRegnCd || !ldongSignguCd) return;
-      if (loading) return;
+      if (loadingRef.current) return;
 
       try {
         setLoading(true);
@@ -183,7 +226,10 @@ const RegionDetailPage = () => {
           }
 
           setPlaces((prev) => [...prev, ...next]);
-          setHasMore(batch.length > 0); // 더 불러올 게 없으면 false
+
+          // 🔻 size 미만이면 끝으로 판단
+          setHasMore(batch.length === size);
+
           setPage(pageToLoad);
         } else {
           setHasMore(false);
@@ -194,9 +240,10 @@ const RegionDetailPage = () => {
         setLoading(false);
       }
     },
-    [ldongRegnCd, ldongSignguCd, size, loading]
+    [ldongRegnCd, ldongSignguCd, size]
   );
 
+  // 첫 페이지
   useEffect(() => {
     if (decodedCity && ldongRegnCd && ldongSignguCd) {
       fetchPage(0);
@@ -205,7 +252,31 @@ const RegionDetailPage = () => {
     }
   }, [decodedCity, ldongRegnCd, ldongSignguCd, fetchPage]);
 
-  // 🔹 더보기 버튼
+  // 🔹 IntersectionObserver로 무한 스크롤
+  useEffect(() => {
+    if (!loadMoreRef.current) return;
+    if (!decodedCity || !ldongRegnCd || !ldongSignguCd) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (!entry.isIntersecting) return;
+        if (!loadingRef.current && hasMoreRef.current) {
+          fetchPage(pageRef.current + 1);
+        }
+      },
+      {
+        root: null, // window 스크롤
+        rootMargin: '200px', // 미리 당겨서 로드
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [decodedCity, ldongRegnCd, ldongSignguCd, fetchPage]);
+
+  // 🔹 더보기 버튼 (백업)
   const handleLoadMore = () => {
     if (!loading && hasMore) {
       fetchPage(page + 1);
@@ -227,7 +298,6 @@ const RegionDetailPage = () => {
           </div>
 
           {/* 날씨 */}
-           {/* 날씨 */}
           <div className="pb-6">
             <h3 className="text-base font-semibold text-gray-800 mb-2">날씨</h3>
             {weatherLoading ? (
@@ -291,6 +361,10 @@ const RegionDetailPage = () => {
                   {places.map((p) => (
                     <PlaceList key={p.contentId} {...p} />
                   ))}
+
+                  {/* 🔻 무한 스크롤 감시점 (이 엘리먼트가 뷰포트에 들어오면 다음 페이지 자동 로드) */}
+                  <div ref={loadMoreRef} className="h-1" />
+
                   <div className="pt-2 pb-[5rem] text-center">
                     {hasMore ? (
                       <button
@@ -322,10 +396,25 @@ const RegionDetailPage = () => {
             </div>
           </div>
         </div>
-
-        {/* 하단 버튼 */}
-        {/* ... 생략 (기존 동일) */}
       </div>
+      {/* ⬇️ ADD: 맨 위로 버튼 (떠있는 고정 버튼) */}
+      {showTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          aria-label="맨 위로 가기"
+          className="
+      fixed bottom-20 right-5 z-50
+      h-11 w-11 rounded-full
+      bg-white/95 border border-gray-200 shadow-lg backdrop-blur
+      flex items-center justify-center
+      text-gray-700 text-lg
+      active:translate-y-[1px] active:shadow-md
+    "
+        >
+          ↑
+        </button>
+      )}
     </DefaultLayout>
   );
 };
