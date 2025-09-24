@@ -23,6 +23,7 @@ const NO_AUTH_PATHS = [
   '/mail/send',
   '/mail/verify',
   '/mail/check-email',
+  '/board',
 ];
 
 function isNoAuthURL(rawUrl) {
