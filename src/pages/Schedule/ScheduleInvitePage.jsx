@@ -112,9 +112,16 @@ const ScheduleInvitePage = () => {
     import.meta?.env?.VITE_PUBLIC_WEB_BASE_URL ||
     'https://yeodam.site';
 
-  // 초대 URL
+  // 초대 URL - 카카오
   const inviteUrl = useMemo(() => {
     const u = new URL(`${PUBLIC_WEB_BASE_URL}/invite`);
+    u.searchParams.set('scheduleId', String(scheduleId || ''));
+    return u.toString();
+  }, [scheduleId]);
+
+  // 초대 URL - 복사
+  const copy_inviteUrl = useMemo(() => {
+    const u = new URL('https://yeodam.vercel.app/invite');
     u.searchParams.set('scheduleId', String(scheduleId || ''));
     return u.toString();
   }, [scheduleId]);
@@ -144,7 +151,7 @@ const ScheduleInvitePage = () => {
   const handleCopyLink = async () => {
     try {
       setBusy(true);
-      await navigator.clipboard.writeText(inviteUrl);
+      await navigator.clipboard.writeText(copy_inviteUrl);
       message.success('초대 링크가 복사되었습니다! 카카오톡에 붙여넣어보세요.');
     } catch (e) {
       message.error('초대 링크 복사에 실패했어요.');
