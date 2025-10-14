@@ -6,7 +6,13 @@ import App from './App';
 
 // Kakao SDK 초기화
 if (window.Kakao && !window.Kakao.isInitialized()) {
-  window.Kakao.init('3b520efdd3c0917f27e809b99ab17c32');
+  const jsKey = process.env.REACT_APP_KAKAO_JS_KEY;
+  if (jsKey) {
+    window.Kakao.init(jsKey);
+    console.log('[Kakao] SDK initialized:', window.Kakao.isInitialized());
+  } else {
+    console.warn('[Kakao] JavaScript key not found in .env');
+  }
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
